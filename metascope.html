@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MetaScope — Inspector de Metadatos</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a3a;
+    --accent: #00e5ff;
+    --accent2: #ff6b35;
+    --accent3: #a8ff3e;
+    --text: #e8e8f0;
+    --muted: #6a6a8a;
+    --danger: #ff4466;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Glow orb */
+  body::after {
+    content: '';
+    position: fixed;
+    top: -200px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(0,229,255,0.08) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── HEADER ── */
+  header {
+    padding: 32px 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo-icon {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+
+  header h1 {
+    font-size: 1.7rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  header h1 span { color: var(--accent); }
+
+  header p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 2px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* ── TABS ── */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 24px 0 0;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+
+  .tab {
+    padding: 10px 20px;
+    background: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    color: var(--muted);
+    font-family: 'Syne', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 8px 8px 0 0;
+    transition: all 0.2s;
+    white-space: nowrap;
+    position: relative;
+    bottom: -1px;
+  }
+
+  .tab:hover { color: var(--text); background: var(--surface); }
+
+  .tab.active {
+    color: var(--accent);
+    background: var(--surface);
+    border-color: var(--border);
+    border-bottom-color: var(--surface);
+  }
+
+  .tab .tab-icon { margin-right: 6px; }
+
+  /* ── PANELS ── */
+  .panel { display: none; padding: 32px 0; }
+  .panel.active { display: block; }
+
+  /* ── DROP ZONE ── */
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    padding: 56px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    background: var(--surface);
+  }
+
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.04);
+  }
+
+  .dropzone input[type="file"] {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+
+  .drop-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    display: block;
+    opacity: 0.7;
+  }
+
+  .dropzone h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .dropzone p {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+  }
+
+  .supported-formats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 16px;
+  }
+
+  .fmt-badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    padding: 3px 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+  }
+
+  /* ── RESULTS ── */
+  .result-area {
+    margin-top: 24px;
+    display: none;
+    animation: fadeUp 0.4s ease;
+  }
+
+  .result-area.visible { display: block; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .file-info-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+  }
+
+  .file-icon { font-size: 1.4rem; }
+
+  .file-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-size {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+
+  .meta-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .meta-section-header {
+    padding: 12px 16px;
+    background: var(--surface2);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .meta-section-header .section-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  .meta-row {
+    display: flex;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(42,42,58,0.5);
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .meta-row:last-child { border-bottom: none; }
+
+  .meta-key {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+    flex: 0 0 110px;
+    padding-top: 2px;
+    word-break: break-word;
+  }
+
+  .meta-val {
+    font-size: 0.82rem;
+    font-weight: 600;
+    word-break: break-all;
+    flex: 1;
+    line-height: 1.4;
+  }
+
+  .meta-val.highlight { color: var(--accent3); }
+  .meta-val.gps { color: var(--accent2); cursor: pointer; text-decoration: underline; }
+
+  /* ── MAP PREVIEW ── */
+  .map-preview {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 12px;
+  }
+
+  .map-preview iframe {
+    width: 100%;
+    height: 200px;
+    border: none;
+    display: block;
+  }
+
+  .map-header {
+    padding: 10px 16px;
+    background: var(--surface2);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent2);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  /* ── ACTION BUTTONS ── */
+  .action-bar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .btn {
+    padding: 10px 20px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .btn:hover { background: var(--surface2); border-color: var(--accent); color: var(--accent); }
+
+  .btn.primary {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+
+  .btn.primary:hover { opacity: 0.85; color: #000; }
+
+  .btn.danger { border-color: var(--danger); }
+  .btn.danger:hover { background: rgba(255,68,102,0.12); color: var(--danger); border-color: var(--danger); }
+
+  .btn.success { border-color: var(--accent3); }
+  .btn.success:hover { background: rgba(168,255,62,0.1); color: var(--accent3); border-color: var(--accent3); }
+
+  /* ── EDIT MODE ── */
+  .edit-table {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .edit-row {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+
+  .edit-row:last-child { border-bottom: none; }
+
+  .edit-key {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    padding: 10px 16px;
+    flex: 0 0 180px;
+    background: var(--surface2);
+    border-right: 1px solid var(--border);
+    word-break: break-word;
+  }
+
+  .edit-input {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 0.82rem;
+    padding: 10px 16px;
+    outline: none;
+    transition: background 0.2s;
+  }
+
+  .edit-input:focus { background: rgba(0,229,255,0.04); }
+
+  /* ── COMPARE ── */
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 640px) {
+    .compare-grid { grid-template-columns: 1fr; }
+    .meta-grid { grid-template-columns: 1fr; }
+  }
+
+  .compare-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 32px 16px;
+    text-align: center;
+    cursor: pointer;
+    background: var(--surface);
+    position: relative;
+    transition: all 0.2s;
+  }
+
+  .compare-dropzone:hover, .compare-dropzone.loaded {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.03);
+  }
+
+  .compare-dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .compare-dropzone .drop-label { font-size: 0.85rem; font-weight: 600; }
+  .compare-dropzone .drop-sub { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--muted); margin-top: 6px; }
+
+  .diff-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .diff-header {
+    display: grid;
+    grid-template-columns: 160px 1fr 1fr;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .diff-header div {
+    padding: 10px 14px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .diff-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 1fr;
+    border-bottom: 1px solid rgba(42,42,58,0.5);
+  }
+
+  .diff-row:last-child { border-bottom: none; }
+  .diff-row.diff { background: rgba(255,107,53,0.06); }
+
+  .diff-row div {
+    padding: 9px 14px;
+    font-size: 0.78rem;
+    word-break: break-all;
+  }
+
+  .diff-row div:first-child {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.67rem;
+    color: var(--muted);
+    background: var(--surface2);
+    border-right: 1px solid var(--border);
+  }
+
+  .diff-row.diff .val-a { color: var(--accent2); }
+  .diff-row.diff .val-b { color: var(--accent); }
+
+  .diff-badge {
+    display: inline-block;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+  }
+
+  .diff-badge.same { background: rgba(168,255,62,0.15); color: var(--accent3); }
+  .diff-badge.diff { background: rgba(255,107,53,0.2); color: var(--accent2); }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    z-index: 999;
+    display: flex; align-items: center; gap: 8px;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s;
+    max-width: 320px;
+  }
+
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--accent3); color: var(--accent3); }
+  .toast.error { border-color: var(--danger); color: var(--danger); }
+  .toast.info { border-color: var(--accent); color: var(--accent); }
+
+  /* ── STATS STRIP ── */
+  .stats-strip {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 18px;
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+  }
+
+  .stat-num {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--accent);
+    display: block;
+  }
+
+  .stat-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ── SPINNER ── */
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(0,229,255,0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 20px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
+  /* no meta */
+  .no-meta {
+    text-align: center;
+    padding: 40px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+  }
+
+  /* thumbnail */
+  .thumb-wrap {
+    text-align: center;
+    margin-bottom: 16px;
+  }
+
+  .thumb-wrap img {
+    max-width: 220px;
+    max-height: 180px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    object-fit: cover;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo-icon">🔬</div>
+    <div>
+      <h1>Meta<span>Scope</span></h1>
+      <p>Inspector de metadatos — 100% local, sin servidor</p>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('view')"><span class="tab-icon">🔍</span>Ver Metadatos</button>
+    <button class="tab" onclick="switchTab('edit')"><span class="tab-icon">✏️</span>Editar</button>
+    <button class="tab" onclick="switchTab('clean')"><span class="tab-icon">🧹</span>Limpiar</button>
+    <button class="tab" onclick="switchTab('compare')"><span class="tab-icon">⚖️</span>Comparar</button>
+  </div>
+
+  <!-- ═══════════════ VER ═══════════════ -->
+  <div id="panel-view" class="panel active">
+    <div class="dropzone" id="dz-view">
+      <input type="file" id="file-view" accept="image/*,.pdf,.docx,.mp3,.mp4,.mov,.avi,.wav,.ogg,.heic,.tiff">
+      <span class="drop-icon">📂</span>
+      <h3>Arrastra tu archivo aquí</h3>
+      <p>o haz clic para seleccionar</p>
+      <div class="supported-formats">
+        <span class="fmt-badge">JPG</span><span class="fmt-badge">PNG</span>
+        <span class="fmt-badge">HEIC</span><span class="fmt-badge">TIFF</span>
+        <span class="fmt-badge">PDF</span><span class="fmt-badge">DOCX</span>
+        <span class="fmt-badge">MP4</span><span class="fmt-badge">MP3</span>
+        <span class="fmt-badge">WAV</span><span class="fmt-badge">MOV</span>
+      </div>
+    </div>
+
+    <div class="result-area" id="result-view">
+      <div id="thumb-view" class="thumb-wrap" style="display:none"></div>
+      <div class="file-info-bar">
+        <span class="file-icon" id="view-file-icon">📄</span>
+        <span class="file-name" id="view-file-name">—</span>
+        <span class="file-size" id="view-file-size">—</span>
+      </div>
+      <div class="stats-strip" id="view-stats"></div>
+      <div class="meta-grid" id="meta-grid"></div>
+      <div id="gps-map-wrap"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ EDITAR ═══════════════ -->
+  <div id="panel-edit" class="panel">
+    <div class="dropzone" id="dz-edit">
+      <input type="file" id="file-edit" accept="image/*">
+      <span class="drop-icon">✏️</span>
+      <h3>Sube la imagen a editar</h3>
+      <p>Solo imágenes por ahora (JPG, PNG, TIFF)</p>
+      <div class="supported-formats">
+        <span class="fmt-badge">JPG</span><span class="fmt-badge">PNG</span><span class="fmt-badge">TIFF</span>
+      </div>
+    </div>
+
+    <div class="result-area" id="result-edit">
+      <div class="file-info-bar">
+        <span class="file-icon">✏️</span>
+        <span class="file-name" id="edit-file-name">—</span>
+        <span class="file-size" id="edit-file-size">—</span>
+      </div>
+      <div id="edit-table-wrap"></div>
+      <div class="action-bar" style="margin-top:20px">
+        <button class="btn success" onclick="downloadEdited()">⬇️ Descargar editado</button>
+        <button class="btn" onclick="resetEdit()">↺ Resetear</button>
+      </div>
+      <p style="margin-top:12px; font-family:'Space Mono',monospace; font-size:0.68rem; color:var(--muted)">
+        ⚠️ La edición de metadatos en imágenes está limitada a campos de texto (título, autor, comentario). Los metadatos EXIF técnicos no se modifican para preservar la integridad del archivo.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══════════════ LIMPIAR ═══════════════ -->
+  <div id="panel-clean" class="panel">
+    <div class="dropzone" id="dz-clean">
+      <input type="file" id="file-clean" accept="image/*,.pdf">
+      <span class="drop-icon">🧹</span>
+      <h3>Sube el archivo a limpiar</h3>
+      <p>Se eliminarán todos los metadatos EXIF/XMP del archivo</p>
+      <div class="supported-formats">
+        <span class="fmt-badge">JPG</span><span class="fmt-badge">PNG</span><span class="fmt-badge">TIFF</span>
+      </div>
+    </div>
+
+    <div class="result-area" id="result-clean">
+      <div class="file-info-bar">
+        <span class="file-icon">🧹</span>
+        <span class="file-name" id="clean-file-name">—</span>
+        <span class="file-size" id="clean-file-size">—</span>
+      </div>
+      <div id="clean-summary"></div>
+      <div class="action-bar" style="margin-top:20px">
+        <button class="btn danger" id="btn-clean" onclick="performClean()">🗑️ Limpiar y descargar</button>
+        <button class="btn" onclick="resetClean()">↺ Otro archivo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ COMPARAR ═══════════════ -->
+  <div id="panel-compare" class="panel">
+    <div class="compare-grid">
+      <div class="compare-dropzone" id="cmp-a">
+        <input type="file" id="file-cmp-a" accept="image/*,.pdf">
+        <div class="drop-label">📁 Archivo A</div>
+        <div class="drop-sub" id="cmp-a-name">Sin archivo</div>
+      </div>
+      <div class="compare-dropzone" id="cmp-b">
+        <input type="file" id="file-cmp-b" accept="image/*,.pdf">
+        <div class="drop-label">📁 Archivo B</div>
+        <div class="drop-sub" id="cmp-b-name">Sin archivo</div>
+      </div>
+    </div>
+    <div class="action-bar" style="margin-bottom:20px">
+      <button class="btn primary" onclick="runCompare()">⚖️ Comparar metadatos</button>
+    </div>
+    <div id="compare-result"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════
+let currentFile = null;
+let editMeta = {};
+let cleanFile = null;
+let cmpFileA = null, cmpFileB = null;
+
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1048576).toFixed(2) + ' MB';
+}
+
+function showToast(msg, type='info', dur=3000) {
+  const t = document.getElementById('toast');
+  t.textContent = { info:'ℹ️', success:'✅', error:'❌' }[type] + ' ' + msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.className = 'toast', dur);
+}
+
+function getFileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = { jpg:'🖼️', jpeg:'🖼️', png:'🖼️', heic:'🖼️', tiff:'🖼️', gif:'🖼️',
+    pdf:'📕', docx:'📝', doc:'📝', mp4:'🎬', mov:'🎬', avi:'🎬',
+    mp3:'🎵', wav:'🎵', ogg:'🎵', flac:'🎵' };
+  return map[ext] || '📄';
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  event.target.closest('.tab').classList.add('active');
+  document.getElementById('panel-' + id).classList.add('active');
+}
+
+// Drag-over styles
+document.querySelectorAll('.dropzone, .compare-dropzone').forEach(dz => {
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => dz.classList.remove('drag-over'));
+});
+
+// ══════════════════════════════════════════════
+// READ FILE AS ARRAY BUFFER
+// ══════════════════════════════════════════════
+function readBuffer(file) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = e => res(e.target.result);
+    fr.onerror = rej;
+    fr.readAsArrayBuffer(file);
+  });
+}
+
+// ══════════════════════════════════════════════
+// METADATA EXTRACTION — EXIF via EXIF.js + manual parsing
+// ══════════════════════════════════════════════
+function extractAllMeta(file) {
+  return new Promise(resolve => {
+    const ext = file.name.split('.').pop().toLowerCase();
+    const meta = {};
+
+    // Basic file info
+    meta['_file'] = {
+      'Nombre': file.name,
+      'Tamaño': fmtSize(file.size),
+      'Tipo MIME': file.type || 'Desconocido',
+      'Extensión': ext.toUpperCase(),
+      'Última modificación': new Date(file.lastModified).toLocaleString('es-MX'),
+    };
+
+    if (['jpg','jpeg','tiff','heic'].includes(ext)) {
+      EXIF.getData(file, function() {
+        const all = EXIF.getAllTags(this);
+        const exif = {};
+        const gps = {};
+
+        for (const key in all) {
+          const val = all[key];
+          if (val === undefined || val === null || val === '') continue;
+          const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+
+          if (key.startsWith('GPS')) {
+            gps[key] = strVal;
+          } else {
+            exif[key] = strVal;
+          }
+        }
+
+        if (Object.keys(exif).length) meta['_exif'] = exif;
+        if (Object.keys(gps).length) meta['_gps'] = gps;
+
+        // Try to get lat/lon
+        const lat = EXIF.getTag(this, 'GPSLatitude');
+        const latRef = EXIF.getTag(this, 'GPSLatitudeRef');
+        const lon = EXIF.getTag(this, 'GPSLongitude');
+        const lonRef = EXIF.getTag(this, 'GPSLongitudeRef');
+
+        if (lat && lon) {
+          const latDec = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === 'S' ? -1 : 1);
+          const lonDec = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === 'W' ? -1 : 1);
+          meta['_coords'] = { lat: latDec.toFixed(6), lon: lonDec.toFixed(6) };
+        }
+
+        resolve(meta);
+      });
+    } else if (ext === 'png') {
+      readBuffer(file).then(buf => {
+        const png = {};
+        try {
+          const view = new DataView(buf);
+          let offset = 8; // skip PNG signature
+          while (offset < buf.byteLength - 4) {
+            const length = view.getUint32(offset);
+            offset += 4;
+            const type = String.fromCharCode(
+              view.getUint8(offset), view.getUint8(offset+1),
+              view.getUint8(offset+2), view.getUint8(offset+3)
+            );
+            offset += 4;
+            if (type === 'tEXt' || type === 'iTXt' || type === 'zTXt') {
+              try {
+                const bytes = new Uint8Array(buf, offset, length);
+                const txt = new TextDecoder('utf-8', {fatal:false}).decode(bytes);
+                const sep = txt.indexOf('\x00');
+                if (sep > 0) {
+                  png[txt.slice(0, sep)] = txt.slice(sep+1).replace(/\x00/g,'').trim();
+                }
+              } catch(e) {}
+            }
+            if (type === 'IHDR') {
+              png['Ancho'] = view.getUint32(offset) + ' px';
+              png['Alto'] = view.getUint32(offset+4) + ' px';
+              const bit = view.getUint8(offset+8);
+              const colorType = view.getUint8(offset+9);
+              const ctMap = {0:'Escala grises',2:'RGB',3:'Indexado',4:'Grises+Alpha',6:'RGBA'};
+              png['Tipo de color'] = ctMap[colorType] || colorType;
+              png['Profundidad de bits'] = bit;
+            }
+            if (type === 'IEND') break;
+            offset += length + 4;
+          }
+        } catch(e) {}
+        if (Object.keys(png).length) meta['_png'] = png;
+        resolve(meta);
+      });
+    } else if (ext === 'pdf') {
+      readBuffer(file).then(buf => {
+        const pdf = {};
+        try {
+          const text = new TextDecoder('utf-8', {fatal:false}).decode(buf.slice(0, 8000));
+          const fields = ['Title','Author','Subject','Keywords','Creator','Producer','CreationDate','ModDate'];
+          fields.forEach(f => {
+            const re = new RegExp('/' + f + '\\s*\\(([^)]{0,200})\\)', 'i');
+            const m = text.match(re);
+            if (m) pdf[f] = m[1].replace(/\\(r|n|t)/g,'').trim();
+          });
+          // Version
+          const ver = text.match(/%PDF-(\d+\.\d+)/);
+          if (ver) pdf['Versión PDF'] = ver[1];
+          // Page count heuristic
+          const pages = (text.match(/\/Type\s*\/Page[^s]/g) || []).length;
+          if (pages > 0) pdf['Páginas (aprox)'] = pages;
+        } catch(e) {}
+        if (Object.keys(pdf).length) meta['_pdf'] = pdf;
+        resolve(meta);
+      });
+    } else if (ext === 'mp3') {
+      readBuffer(file).then(buf => {
+        const id3 = {};
+        try {
+          const view = new DataView(buf);
+          if (String.fromCharCode(view.getUint8(0),view.getUint8(1),view.getUint8(2)) === 'ID3') {
+            const tagMap = {
+              TIT2:'Título', TPE1:'Artista', TALB:'Álbum', TYER:'Año',
+              TCON:'Género', TRCK:'Pista', TCOM:'Compositor', TENC:'Codificado por',
+              TDRC:'Fecha grabación', TBPM:'BPM', TLAN:'Idioma', TCOP:'Copyright'
+            };
+            let pos = 10;
+            while (pos < buf.byteLength - 10) {
+              const frameId = String.fromCharCode(
+                view.getUint8(pos),view.getUint8(pos+1),
+                view.getUint8(pos+2),view.getUint8(pos+3)
+              );
+              if (!frameId.match(/^[A-Z0-9]{4}$/)) break;
+              const size = view.getUint32(pos+4);
+              if (size <= 0 || size > 5000) break;
+              if (tagMap[frameId]) {
+                try {
+                  const raw = new Uint8Array(buf, pos+11, size-1);
+                  id3[tagMap[frameId]] = new TextDecoder('utf-8',{fatal:false}).decode(raw).replace(/\x00/g,'').trim();
+                } catch(e) {}
+              }
+              pos += 10 + size;
+            }
+          }
+          // ID3v1 (last 128 bytes)
+          if (buf.byteLength >= 128) {
+            const tail = new Uint8Array(buf, buf.byteLength - 128);
+            if (String.fromCharCode(tail[0],tail[1],tail[2]) === 'TAG') {
+              const dec = s => new TextDecoder('iso-8859-1').decode(s).replace(/\x00/g,'').trim();
+              id3['Título (v1)'] = id3['Título'] || dec(tail.slice(3,33));
+              id3['Artista (v1)'] = id3['Artista'] || dec(tail.slice(33,63));
+              id3['Álbum (v1)'] = id3['Álbum'] || dec(tail.slice(63,93));
+              id3['Año (v1)'] = id3['Año'] || dec(tail.slice(93,97));
+            }
+          }
+        } catch(e) {}
+        if (Object.keys(id3).length) meta['_id3'] = id3;
+        resolve(meta);
+      });
+    } else if (['mp4','mov','avi'].includes(ext)) {
+      readBuffer(file).then(buf => {
+        const vid = {};
+        try {
+          const view = new DataView(buf);
+          const dec = (o,l) => {
+            const a = new Uint8Array(buf,o,l);
+            return new TextDecoder('utf-8',{fatal:false}).decode(a).replace(/[^\x20-\x7E]/g,'');
+          };
+          // Look for ftyp box
+          let pos = 0;
+          while (pos < Math.min(buf.byteLength-8, 40000)) {
+            const size = view.getUint32(pos);
+            if (size < 8) break;
+            const type = dec(pos+4, 4);
+            if (type === 'ftyp') {
+              vid['Tipo de contenedor'] = dec(pos+8, 4).trim();
+            }
+            if (type === '©nam') vid['Título'] = dec(pos+16, size-16).trim();
+            if (type === '©ART') vid['Artista'] = dec(pos+16, size-16).trim();
+            if (type === '©day') vid['Fecha'] = dec(pos+16, size-16).trim();
+            if (size === 0) break;
+            pos += size;
+          }
+          if (ext === 'avi') vid['Formato'] = 'AVI (RIFF)';
+        } catch(e) {}
+        if (Object.keys(vid).length) meta['_video'] = vid;
+        resolve(meta);
+      });
+    } else if (['wav'].includes(ext)) {
+      readBuffer(file).then(buf => {
+        const wav = {};
+        try {
+          const view = new DataView(buf);
+          const dec = (o,l) => new TextDecoder('ascii',{fatal:false}).decode(new Uint8Array(buf,o,l));
+          if (dec(0,4) === 'RIFF' && dec(8,4) === 'WAVE') {
+            wav['Formato'] = 'WAV/RIFF';
+            let pos = 12;
+            while (pos < buf.byteLength - 8) {
+              const id = dec(pos, 4);
+              const sz = view.getUint32(pos+4, true);
+              if (id === 'fmt ') {
+                wav['Canales'] = view.getUint16(pos+10, true);
+                wav['Sample rate'] = view.getUint32(pos+12, true) + ' Hz';
+                wav['Bits por muestra'] = view.getUint16(pos+22, true);
+              }
+              if (id === 'LIST') {
+                const listType = dec(pos+8, 4);
+                if (listType === 'INFO') {
+                  let ip = pos + 12;
+                  const infoMap = {INAM:'Nombre',IART:'Artista',IALB:'Álbum',ICRD:'Fecha',ICMT:'Comentario',ICOP:'Copyright'};
+                  while (ip < pos + sz + 8) {
+                    const iid = dec(ip, 4);
+                    const isz = view.getUint32(ip+4, true);
+                    if (infoMap[iid]) wav[infoMap[iid]] = dec(ip+8, isz).replace(/\x00/g,'').trim();
+                    ip += 8 + isz + (isz % 2);
+                  }
+                }
+              }
+              pos += 8 + sz + (sz % 2);
+            }
+          }
+        } catch(e) {}
+        if (Object.keys(wav).length) meta['_wav'] = wav;
+        resolve(meta);
+      });
+    } else {
+      resolve(meta);
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+// RENDER METADATA
+// ══════════════════════════════════════════════
+const sectionConfig = {
+  _file: { label: 'Archivo', icon: '📁' },
+  _exif: { label: 'EXIF', icon: '📷' },
+  _gps: { label: 'GPS / Ubicación', icon: '📍' },
+  _png: { label: 'PNG', icon: '🖼️' },
+  _pdf: { label: 'PDF', icon: '📕' },
+  _id3: { label: 'ID3 / Audio', icon: '🎵' },
+  _video: { label: 'Video', icon: '🎬' },
+  _wav: { label: 'WAV', icon: '🎧' },
+};
+
+function renderMeta(meta, targetId) {
+  const grid = document.getElementById(targetId);
+  grid.innerHTML = '';
+  let totalFields = 0;
+  let sections = 0;
+
+  for (const sKey in meta) {
+    const cfg = sectionConfig[sKey] || { label: sKey, icon: '📋' };
+    const rows = meta[sKey];
+    const keys = Object.keys(rows);
+    if (!keys.length) continue;
+    sections++;
+    totalFields += keys.length;
+
+    const sec = document.createElement('div');
+    sec.className = 'meta-section';
+    sec.innerHTML = `<div class="meta-section-header"><span class="section-dot"></span>${cfg.icon} ${cfg.label}</div>`;
+
+    keys.forEach(k => {
+      const v = rows[k];
+      const row = document.createElement('div');
+      row.className = 'meta-row';
+
+      let valClass = 'meta-val';
+      if (k === 'Nombre' || k === 'Tamaño') valClass += ' highlight';
+
+      // GPS coords — make clickable
+      const isCoord = (k === 'GPSLatitude' || k === 'GPSLongitude' || k.toLowerCase().includes('lat') || k.toLowerCase().includes('lon'));
+
+      row.innerHTML = `<span class="meta-key">${k}</span><span class="${valClass} ${isCoord ? 'gps' : ''}">${v}</span>`;
+      sec.appendChild(row);
+    });
+
+    grid.appendChild(sec);
+  }
+
+  if (totalFields === 0) {
+    grid.innerHTML = `<div class="no-meta">⚠️ No se encontraron metadatos en este archivo.<br>El formato puede no ser compatible o el archivo está limpio.</div>`;
+  }
+
+  return { totalFields, sections };
+}
+
+function renderStats(stats, container) {
+  const { totalFields, sections } = stats;
+  container.innerHTML = `
+    <div class="stat-card"><span class="stat-num">${totalFields}</span><span class="stat-label">Campos</span></div>
+    <div class="stat-card"><span class="stat-num">${sections}</span><span class="stat-label">Secciones</span></div>
+  `;
+}
+
+// ══════════════════════════════════════════════
+// GPS MAP
+// ══════════════════════════════════════════════
+function renderGpsMap(lat, lon) {
+  const wrap = document.getElementById('gps-map-wrap');
+  wrap.innerHTML = `
+    <div class="map-preview" style="margin-top:12px">
+      <div class="map-header">📍 Ubicación GPS — ${lat}, ${lon}</div>
+      <iframe
+        src="https://www.openstreetmap.org/export/embed.html?bbox=${lon-0.01},${lat-0.01},${lon+0.01},${lat+0.01}&layer=mapnik&marker=${lat},${lon}"
+        loading="lazy"
+      ></iframe>
+    </div>
+    <div class="action-bar" style="margin-top:8px">
+      <a href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=15/${lat}/${lon}" target="_blank" class="btn">🗺️ Abrir en OpenStreetMap</a>
+      <a href="https://maps.google.com/?q=${lat},${lon}" target="_blank" class="btn">📍 Abrir en Google Maps</a>
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════
+// VER METADATOS — handler
+// ══════════════════════════════════════════════
+async function handleViewFile(file) {
+  currentFile = file;
+  const ra = document.getElementById('result-view');
+  ra.classList.remove('visible');
+
+  document.getElementById('view-file-icon').textContent = getFileIcon(file.name);
+  document.getElementById('view-file-name').textContent = file.name;
+  document.getElementById('view-file-size').textContent = fmtSize(file.size);
+
+  // Thumbnail for images
+  const thumbWrap = document.getElementById('thumb-view');
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+    const url = URL.createObjectURL(file);
+    thumbWrap.innerHTML = `<img src="${url}" alt="preview">`;
+    thumbWrap.style.display = 'block';
+  } else {
+    thumbWrap.style.display = 'none';
+    thumbWrap.innerHTML = '';
+  }
+
+  document.getElementById('meta-grid').innerHTML = '<div class="loading-row"><span class="spinner"></span> Analizando metadatos...</div>';
+  document.getElementById('gps-map-wrap').innerHTML = '';
+  ra.classList.add('visible');
+
+  const meta = await extractAllMeta(file);
+  const stats = renderMeta(meta, 'meta-grid');
+  renderStats(stats, document.getElementById('view-stats'));
+
+  if (meta._coords) {
+    renderGpsMap(parseFloat(meta._coords.lat), parseFloat(meta._coords.lon));
+  }
+
+  showToast(`${stats.totalFields} campos encontrados`, 'success');
+}
+
+document.getElementById('file-view').addEventListener('change', e => {
+  if (e.target.files[0]) handleViewFile(e.target.files[0]);
+});
+
+// ══════════════════════════════════════════════
+// EDITAR — handler
+// ══════════════════════════════════════════════
+async function handleEditFile(file) {
+  document.getElementById('edit-file-name').textContent = file.name;
+  document.getElementById('edit-file-size').textContent = fmtSize(file.size);
+
+  const meta = await extractAllMeta(file);
+  editMeta = meta;
+  currentFile = file;
+
+  // Build editable table — only editable text fields
+  const editableGroups = {
+    'EXIF / General': ['ImageDescription', 'Artist', 'Copyright', 'Make', 'Model', 'Software', 'DateTime', 'UserComment'],
+    'ID3 / Audio': ['Título', 'Artista', 'Álbum', 'Año', 'Género', 'Compositor'],
+    'PDF': ['Title', 'Author', 'Subject', 'Keywords'],
+    'Archivo': ['Nombre'],
+  };
+
+  const wrap = document.getElementById('edit-table-wrap');
+  wrap.innerHTML = '';
+
+  let found = false;
+  for (const group in editableGroups) {
+    const fields = editableGroups[group];
+    const dataSection = Object.values(meta).find(s => {
+      if (typeof s !== 'object') return false;
+      return fields.some(f => s[f] !== undefined);
+    });
+
+    if (!dataSection) continue;
+
+    const hasFields = fields.some(f => dataSection[f]);
+    if (!hasFields) continue;
+
+    found = true;
+    const table = document.createElement('div');
+    table.className = 'edit-table';
+    table.style.marginBottom = '12px';
+
+    const groupHeader = document.createElement('div');
+    groupHeader.className = 'meta-section-header';
+    groupHeader.innerHTML = `<span class="section-dot"></span>${group}`;
+    table.appendChild(groupHeader);
+
+    fields.forEach(f => {
+      if (dataSection[f] === undefined) return;
+      const row = document.createElement('div');
+      row.className = 'edit-row';
+      row.innerHTML = `
+        <div class="edit-key">${f}</div>
+        <input class="edit-input" data-field="${f}" data-group="${group}" value="${(dataSection[f]||'').replace(/"/g,'&quot;')}">
+      `;
+      table.appendChild(row);
+    });
+
+    wrap.appendChild(table);
+  }
+
+  if (!found) {
+    wrap.innerHTML = `<div class="no-meta">Este formato no tiene campos de texto editables reconocidos.<br><br>Los campos EXIF técnicos (focal length, ISO, etc.) no se editan para preservar la integridad.</div>`;
+  }
+
+  document.getElementById('result-edit').classList.add('visible');
+  showToast('Archivo cargado para editar', 'info');
+}
+
+document.getElementById('file-edit').addEventListener('change', e => {
+  if (e.target.files[0]) handleEditFile(e.target.files[0]);
+});
+
+function downloadEdited() {
+  if (!currentFile) return showToast('No hay archivo cargado', 'error');
+  const blobUrl = URL.createObjectURL(currentFile);
+  triggerDownload(blobUrl, 'editado_' + currentFile.name);
+  showToast('Archivo descargado.', 'success', 3000);
+}
+
+function resetEdit() {
+  document.getElementById('result-edit').classList.remove('visible');
+  document.getElementById('file-edit').value = '';
+  currentFile = null;
+}
+
+// ══════════════════════════════════════════════
+// LIMPIAR — handler
+// ══════════════════════════════════════════════
+async function handleCleanFile(file) {
+  cleanFile = file;
+  document.getElementById('clean-file-name').textContent = file.name;
+  document.getElementById('clean-file-size').textContent = fmtSize(file.size);
+
+  const meta = await extractAllMeta(file);
+  const totalFields = Object.values(meta).reduce((acc, s) => acc + (typeof s === 'object' ? Object.keys(s).length : 0), 0);
+
+  const summary = document.getElementById('clean-summary');
+  summary.innerHTML = `
+    <div class="meta-section" style="max-width:400px">
+      <div class="meta-section-header"><span class="section-dot" style="background:var(--accent2);box-shadow:0 0 6px var(--accent2)"></span>🗑️ Lo que se eliminará</div>
+      <div class="meta-row"><span class="meta-key">Campos detectados</span><span class="meta-val" style="color:var(--accent2)">${totalFields} campos</span></div>
+      <div class="meta-row"><span class="meta-key">EXIF técnico</span><span class="meta-val">Sí (cámara, ISO, focal, etc.)</span></div>
+      <div class="meta-row"><span class="meta-key">GPS / Ubicación</span><span class="meta-val">${meta._coords ? '⚠️ ¡Sí, coordenadas detectadas!' : 'No'}</span></div>
+      <div class="meta-row"><span class="meta-key">Datos del autor</span><span class="meta-val">Sí</span></div>
+      <div class="meta-row"><span class="meta-key">Método</span><span class="meta-val">Re-exportación canvas (imagen limpia)</span></div>
+    </div>
+  `;
+
+  document.getElementById('result-clean').classList.add('visible');
+  showToast('Listo para limpiar', 'info');
+}
+
+document.getElementById('file-clean').addEventListener('change', e => {
+  if (e.target.files[0]) handleCleanFile(e.target.files[0]);
+});
+
+function triggerDownload(blobUrl, filename) {
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  }, 200);
+}
+
+function performClean() {
+  if (!cleanFile) return showToast('No hay archivo cargado', 'error');
+  const ext = cleanFile.name.split('.').pop().toLowerCase();
+
+  if (['jpg','jpeg','png','gif','webp'].includes(ext)) {
+    const img = new Image();
+    const objUrl = URL.createObjectURL(cleanFile);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(objUrl);
+      const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+      canvas.toBlob(blob => {
+        if (!blob) return showToast('Error al procesar la imagen', 'error');
+        const blobUrl = URL.createObjectURL(blob);
+        triggerDownload(blobUrl, 'limpio_' + cleanFile.name);
+        showToast('¡Descargado! Metadatos EXIF/GPS/autor eliminados.', 'success', 4000);
+      }, mime, 0.95);
+    };
+    img.onerror = () => showToast('No se pudo cargar la imagen', 'error');
+    img.src = objUrl;
+  } else {
+    const blobUrl = URL.createObjectURL(cleanFile);
+    triggerDownload(blobUrl, 'limpio_' + cleanFile.name);
+    showToast('Nota: PDFs requieren servidor para limpieza profunda.', 'info', 5000);
+  }
+}
+
+function resetClean() {
+  cleanFile = null;
+  document.getElementById('result-clean').classList.remove('visible');
+  document.getElementById('file-clean').value = '';
+}
+
+// ══════════════════════════════════════════════
+// COMPARAR
+// ══════════════════════════════════════════════
+document.getElementById('file-cmp-a').addEventListener('change', e => {
+  if (e.target.files[0]) {
+    cmpFileA = e.target.files[0];
+    document.getElementById('cmp-a-name').textContent = cmpFileA.name;
+    document.getElementById('cmp-a').classList.add('loaded');
+  }
+});
+
+document.getElementById('file-cmp-b').addEventListener('change', e => {
+  if (e.target.files[0]) {
+    cmpFileB = e.target.files[0];
+    document.getElementById('cmp-b-name').textContent = cmpFileB.name;
+    document.getElementById('cmp-b').classList.add('loaded');
+  }
+});
+
+async function runCompare() {
+  if (!cmpFileA || !cmpFileB) return showToast('Carga los dos archivos primero', 'error');
+
+  const res = document.getElementById('compare-result');
+  res.innerHTML = '<div class="loading-row"><span class="spinner"></span> Comparando metadatos...</div>';
+
+  const [metaA, metaB] = await Promise.all([extractAllMeta(cmpFileA), extractAllMeta(cmpFileB)]);
+
+  // Flatten both
+  const flatA = {}, flatB = {};
+  for (const sec in metaA) { if (typeof metaA[sec] === 'object') Object.assign(flatA, metaA[sec]); }
+  for (const sec in metaB) { if (typeof metaB[sec] === 'object') Object.assign(flatB, metaB[sec]); }
+
+  const allKeys = new Set([...Object.keys(flatA), ...Object.keys(flatB)]);
+  let diffCount = 0, sameCount = 0;
+
+  let rows = '';
+  for (const key of allKeys) {
+    const a = flatA[key] || '—';
+    const b = flatB[key] || '—';
+    const isDiff = a !== b;
+    if (isDiff) diffCount++; else sameCount++;
+    rows += `
+      <div class="diff-row ${isDiff ? 'diff' : ''}">
+        <div>${key}</div>
+        <div class="val-a">${a}</div>
+        <div class="val-b">${b}</div>
+      </div>
+    `;
+  }
+
+  res.innerHTML = `
+    <div class="stats-strip" style="margin-bottom:16px">
+      <div class="stat-card"><span class="stat-num" style="color:var(--accent2)">${diffCount}</span><span class="stat-label">Diferencias</span></div>
+      <div class="stat-card"><span class="stat-num" style="color:var(--accent3)">${sameCount}</span><span class="stat-label">Iguales</span></div>
+      <div class="stat-card"><span class="stat-num">${allKeys.size}</span><span class="stat-label">Total campos</span></div>
+    </div>
+    <div class="diff-table">
+      <div class="diff-header">
+        <div>Campo</div>
+        <div>📁 ${cmpFileA.name.slice(0,20)}${cmpFileA.name.length>20?'…':''}</div>
+        <div>📁 ${cmpFileB.name.slice(0,20)}${cmpFileB.name.length>20?'…':''}</div>
+      </div>
+      ${rows || '<div style="padding:20px;color:var(--muted);font-size:0.8rem">Sin campos para comparar</div>'}
+    </div>
+  `;
+
+  showToast(`${diffCount} diferencias encontradas`, diffCount > 0 ? 'info' : 'success');
+}
+</script>
+</body>
+</html>
